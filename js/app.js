@@ -1,4 +1,5 @@
 // ── app.js ──
+document.getElementById('debug').textContent = 'JS loaded';
 
 // ─── Data ───────────────────────────────────────────
 let DATA = { nouns: [], iAdj: [], naAdj: [], verbs: [] };
