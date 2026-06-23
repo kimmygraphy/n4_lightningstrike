@@ -22,39 +22,21 @@ async function boot() {
     return r.json();
   }).catch(e => { console.warn(e); return []; });
 
-  try {
-    const [nouns, iAdj, naAdj, verbs] = await Promise.all([
-      fetchJson('data/nouns.json'),
-      fetchJson('data/i-adjectives.json'),
-      fetchJson('data/na-adjectives.json'),
-      fetchJson('data/verbs.json'),
-    ]);
-    DATA.nouns = nouns;
-    DATA.iAdj = iAdj;
-    DATA.naAdj = naAdj;
-    DATA.verbs = verbs;
+  const [nouns, iAdj, naAdj, verbs] = await Promise.all([
+    fetchJson('data/nouns.json'),
+    fetchJson('data/i-adjectives.json'),
+    fetchJson('data/na-adjectives.json'),
+    fetchJson('data/verbs.json'),
+  ]);
+  DATA.nouns = nouns;
+  DATA.iAdj = iAdj;
+  DATA.naAdj = naAdj;
+  DATA.verbs = verbs;
 
-    // 디버그: 로드 확인
-    document.getElementById('content').innerHTML = `
-      <div style="padding:16px;font-size:13px;color:var(--text-dim);line-height:2">
-        nouns: ${nouns.length}개<br>
-        iAdj: ${iAdj.length}개<br>
-        naAdj: ${naAdj.length}개<br>
-        verbs: ${verbs.length}개<br>
-        VerbConj 존재: ${typeof VerbConj !== 'undefined'}<br>
-        <br>렌더 시작...
-      </div>`;
-
-    Store.updateStreak();
-    renderHeader();
-    renderNav();
-    switchTab('noun');
-  } catch(err) {
-    document.getElementById('content').innerHTML = `
-      <div style="padding:16px;color:var(--wrong);font-size:13px">
-        오류: ${err.message}
-      </div>`;
-  }
+  Store.updateStreak();
+  renderHeader();
+  renderNav();
+  switchTab('noun');
 }
 
 // ─── Header ───────────────────────────────────────────
