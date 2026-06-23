@@ -3,14 +3,16 @@
 // ─── Data ───────────────────────────────────────────
 let DATA = { nouns: [], iAdj: [], naAdj: [], verbs: [] };
 let STATE = {
-  tab: 'noun',          // current main tab
-  subTab: 'quiz',       // quiz | table
+  tab: 'noun',
+  subTab: 'quiz',
   wordType: 'noun',
   selectedWord: null,
   currentQ: null,
   answered: false,
   sessionCorrect: 0,
   sessionTotal: 0,
+  verbSubTab: 'quiz',
+  verbGroup: 'all',
 };
 
 // ─── Boot ─────────────────────────────────────────────
@@ -68,6 +70,8 @@ function renderNav() {
 function switchTab(id) {
   STATE.tab = id;
   STATE.subTab = 'quiz';
+  STATE.verbSubTab = 'quiz';
+  STATE.verbGroup = 'all';
   STATE.selectedWord = null;
   STATE.currentQ = null;
   STATE.answered = false;
