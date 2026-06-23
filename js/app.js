@@ -3,7 +3,7 @@
 // ─── Data ───────────────────────────────────────────
 let DATA = { nouns: [], iAdj: [], naAdj: [], verbs: [] };
 let STATE = {
-  tab: 'noun',
+  tab: 'today',
   subTab: 'quiz',
   wordType: 'noun',
   selectedWord: null,
@@ -13,6 +13,11 @@ let STATE = {
   sessionTotal: 0,
   verbSubTab: 'quiz',
   verbGroup: 'all',
+  todayQs: null,
+  todayDate: null,
+  todayIdx: 0,
+  todayCorrect: 0,
+  todayAnswered: false,
 };
 
 // ─── Boot ─────────────────────────────────────────────
@@ -36,7 +41,7 @@ async function boot() {
   Store.updateStreak();
   renderHeader();
   renderNav();
-  switchTab('noun');
+  switchTab('today');
 }
 
 // ─── Header ───────────────────────────────────────────
@@ -47,6 +52,7 @@ function renderHeader() {
 
 // ─── Bottom Nav ───────────────────────────────────────
 const TABS = [
+  { id: 'today', icon: '今', label: '오늘' },
   { id: 'noun',  icon: '名', label: '명사' },
   { id: 'iadj',  icon: 'い', label: 'い형용사' },
   { id: 'naadj', icon: 'な', label: 'な형용사' },
@@ -77,11 +83,191 @@ function switchTab(id) {
   STATE.answered = false;
   renderNav();
 
+  if (id === 'today') renderTodayTab();
   if (id === 'noun')  renderWordTab('noun',  DATA.nouns,  Conj.noun);
   if (id === 'iadj')  renderWordTab('iadj',  DATA.iAdj,   Conj.iAdj);
   if (id === 'naadj') renderWordTab('naadj', DATA.naAdj,  Conj.naAdj);
   if (id === 'verb')  renderVerbTab();
   if (id === 'wrong') renderWrongTab();
+}
+
+// ─── Today's 20 Questions ─────────────────────────────
+function generateTodayQuestions() {
+  const shuffle = arr => {
+    const a = [...arr]; for (let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a;
+  };
+
+  const qs = [];
+
+  // 명사 4문제
+  shuffle(DATA.nouns).slice(0, 4).forEach(w => {
+    const types = ['form', 'meaning', 'word'];
+    const t = types[Math.floor(Math.random() * types.length)];
+    const q = Conj.makeQuestion(t, w, DATA.nouns, Conj.noun);
+    if (q) qs.push({ ...q, category: '명사' });
+  });
+
+  // 형용사 4문제 (い+な 합쳐서)
+  const adjPool = [...DATA.iAdj, ...DATA.naAdj];
+  shuffle(adjPool).slice(0, 4).forEach(w => {
+    const isI = DATA.iAdj.some(a => a.id === w.id);
+    const conjFn = isI ? Conj.iAdj : Conj.naAdj;
+    const allAdj = isI ? DATA.iAdj : DATA.naAdj;
+    const types = ['form', 'meaning', 'word'];
+    const t = types[Math.floor(Math.random() * types.length)];
+    const q = Conj.makeQuestion(t, w, allAdj, conjFn);
+    if (q) qs.push({ ...q, category: isI ? 'い형용사' : 'な형용사' });
+  });
+
+  // 동사 12문제
+  shuffle(DATA.verbs).slice(0, 12).forEach(v => {
+    const q = VerbConj.makeFormQuestion(v, DATA.verbs);
+    if (q) qs.push({ ...q, category: '동사' });
+  });
+
+  return shuffle(qs);
+}
+
+function renderTodayTab() {
+  const content = document.getElementById('content');
+
+  // 오늘 날짜 기반으로 문제 생성 (하루에 한 번 고정)
+  const today = new Date().toISOString().split('T')[0];
+  if (!STATE.todayQs || STATE.todayDate !== today) {
+    STATE.todayQs = generateTodayQuestions();
+    STATE.todayDate = today;
+    STATE.todayIdx = 0;
+    STATE.todayCorrect = 0;
+    STATE.todayAnswered = false;
+  }
+
+  const { todayQs, todayIdx } = STATE;
+  const total = todayQs.length;
+
+  // 완료 화면
+  if (todayIdx >= total) {
+    const pct = Math.round(STATE.todayCorrect / total * 100);
+    content.innerHTML = `
+      <p class="section-title">오늘의 20문제</p>
+      <div class="quiz-prompt" style="margin-bottom:16px;text-align:center;padding:32px 20px">
+        <div style="font-size:48px;margin-bottom:12px">${pct >= 80 ? '🎉' : pct >= 60 ? '👍' : '💪'}</div>
+        <div style="font-size:28px;font-weight:700;color:var(--accent)">${pct}%</div>
+        <div style="color:var(--text-dim);margin-top:6px">${total}문제 중 ${STATE.todayCorrect}개 정답</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-val">${STATE.todayCorrect}</div><div class="stat-label">정답</div></div>
+        <div class="stat-card"><div class="stat-val">${total - STATE.todayCorrect}</div><div class="stat-label">오답</div></div>
+        <div class="stat-card"><div class="stat-val">${pct}%</div><div class="stat-label">정답률</div></div>
+      </div>
+      <button class="btn-secondary" id="retry-btn">다시 풀기</button>
+    `;
+    content.querySelector('#retry-btn').addEventListener('click', () => {
+      STATE.todayQs = generateTodayQuestions();
+      STATE.todayIdx = 0;
+      STATE.todayCorrect = 0;
+      STATE.todayAnswered = false;
+      renderTodayTab();
+    });
+    return;
+  }
+
+  const q = todayQs[todayIdx];
+  const progress = Math.round((todayIdx / total) * 100);
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <p class="section-title" style="margin:0">오늘의 20문제</p>
+      <span style="font-size:13px;color:var(--text-dim)">${todayIdx + 1} / ${total}</span>
+    </div>
+    <div class="progress-wrap"><div class="progress-fill" style="width:${progress}%"></div></div>
+    <div style="margin-bottom:12px">
+      <span style="font-size:11px;background:var(--accent-soft);color:var(--accent);
+                   border-radius:4px;padding:2px 8px;border:1px solid var(--accent)">${q.category}</span>
+    </div>
+    <div class="quiz-area">
+      ${buildTodayPromptHTML(q)}
+      <div class="options-grid" id="options"></div>
+      <div class="feedback" id="feedback"></div>
+      <button class="btn-primary" id="next-btn" style="display:none">
+        ${todayIdx + 1 >= total ? '결과 보기 →' : '다음 문제 →'}
+      </button>
+    </div>
+  `;
+
+  STATE.todayAnswered = false;
+  const optGrid = content.querySelector('#options');
+  q.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.addEventListener('click', () => handleTodayAnswer(opt, q));
+    optGrid.appendChild(btn);
+  });
+
+  content.querySelector('#next-btn').addEventListener('click', () => {
+    STATE.todayIdx++;
+    STATE.todayAnswered = false;
+    renderTodayTab();
+  });
+}
+
+function buildTodayPromptHTML(q) {
+  if (q.promptType === 'form') {
+    return `
+      <div class="quiz-prompt">
+        <div class="prompt-label">활용형을 고르세요</div>
+        <div class="prompt-word">${q.word}</div>
+        ${q.reading ? `<div class="prompt-reading">${q.reading}</div>` : ''}
+        <div class="prompt-target">${q.promptLabel}</div>
+      </div>`;
+  }
+  if (q.promptType === 'meaning') {
+    return `
+      <div class="quiz-prompt">
+        <div class="prompt-label">뜻을 고르세요</div>
+        <div class="prompt-word">${q.word}</div>
+        ${q.reading ? `<div class="prompt-reading">${q.reading}</div>` : ''}
+      </div>`;
+  }
+  if (q.promptType === 'group') {
+    return `
+      <div class="quiz-prompt">
+        <div class="prompt-label">그룹을 고르세요</div>
+        <div class="prompt-word">${q.word}</div>
+        <div class="prompt-reading">${q.reading}</div>
+      </div>`;
+  }
+  return `
+    <div class="quiz-prompt">
+      <div class="prompt-label">일본어를 고르세요</div>
+      <div class="prompt-meaning">${q.word}</div>
+    </div>`;
+}
+
+function handleTodayAnswer(chosen, q) {
+  if (STATE.todayAnswered) return;
+  STATE.todayAnswered = true;
+
+  const isCorrect = chosen === q.answer;
+  if (isCorrect) STATE.todayCorrect++;
+  Store.recordAnswer(q.id, isCorrect);
+
+  document.querySelectorAll('.option-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.textContent === q.answer) btn.classList.add('correct');
+    else if (btn.textContent === chosen && !isCorrect) btn.classList.add('wrong');
+  });
+
+  const fb = document.getElementById('feedback');
+  fb.classList.add('show');
+  if (isCorrect) {
+    fb.classList.add('correct-fb');
+    fb.innerHTML = `<span>✓</span> 정답!`;
+  } else {
+    fb.classList.add('wrong-fb');
+    fb.innerHTML = `<span>✗</span> 오답. 정답: <span class="fb-answer">${q.answer}</span>`;
+  }
+  document.getElementById('next-btn').style.display = 'block';
 }
 
 // ─── Generic word tab (noun / i-adj / na-adj) ──────────
