@@ -1,5 +1,4 @@
 // ── app.js ──
-document.getElementById('debug').textContent = 'JS loaded';
 
 // ─── Data ───────────────────────────────────────────
 let DATA = { nouns: [], iAdj: [], naAdj: [], verbs: [] };
@@ -56,12 +55,6 @@ async function boot() {
         오류: ${err.message}
       </div>`;
   }
-}
-
-  Store.updateStreak();
-  renderHeader();
-  renderNav();
-  switchTab('noun');
 }
 
 // ─── Header ───────────────────────────────────────────
