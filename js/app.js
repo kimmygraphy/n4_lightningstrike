@@ -1,7 +1,7 @@
 // ── app.js ──
 
 // ─── Data ───────────────────────────────────────────
-let DATA = { nouns: [], iAdj: [], naAdj: [] };
+let DATA = { nouns: [], iAdj: [], naAdj: [], verbs: [] };
 let STATE = {
   tab: 'noun',          // current main tab
   subTab: 'quiz',       // quiz | table
@@ -20,14 +20,16 @@ async function boot() {
     return r.json();
   }).catch(e => { console.warn(e); return []; });
 
-  const [nouns, iAdj, naAdj] = await Promise.all([
+  const [nouns, iAdj, naAdj, verbs] = await Promise.all([
     fetchJson('data/nouns.json'),
     fetchJson('data/i-adjectives.json'),
     fetchJson('data/na-adjectives.json'),
+    fetchJson('data/verbs.json'),
   ]);
   DATA.nouns = nouns;
   DATA.iAdj = iAdj;
   DATA.naAdj = naAdj;
+  DATA.verbs = verbs;
 
   Store.updateStreak();
   renderHeader();
@@ -46,6 +48,7 @@ const TABS = [
   { id: 'noun',  icon: '名', label: '명사' },
   { id: 'iadj',  icon: 'い', label: 'い형용사' },
   { id: 'naadj', icon: 'な', label: 'な형용사' },
+  { id: 'verb',  icon: '動', label: '동사' },
   { id: 'wrong', icon: '✗',  label: '오답노트' },
 ];
 
@@ -73,6 +76,7 @@ function switchTab(id) {
   if (id === 'noun')  renderWordTab('noun',  DATA.nouns,  Conj.noun);
   if (id === 'iadj')  renderWordTab('iadj',  DATA.iAdj,   Conj.iAdj);
   if (id === 'naadj') renderWordTab('naadj', DATA.naAdj,  Conj.naAdj);
+  if (id === 'verb')  renderVerbTab();
   if (id === 'wrong') renderWrongTab();
 }
 
@@ -266,6 +270,226 @@ function handleAnswer(chosen, q, type, words, conjFn) {
   document.getElementById('skip-btn').style.display = 'none';
 
   // refresh stats
+  const today = Store.getTodayStats();
+  const statCards = document.querySelectorAll('.stat-card');
+  if (statCards[0]) statCards[0].querySelector('.stat-val').textContent = today.total;
+  if (statCards[1]) statCards[1].querySelector('.stat-val').textContent =
+    today.total > 0 ? Math.round(today.correct/today.total*100) + '%' : '0%';
+}
+
+// ─── Verb Tab ─────────────────────────────────────────
+function renderVerbTab() {
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <p class="section-title">동사 선택</p>
+    <div class="sub-tabs" id="verb-sub-tabs">
+      <button class="sub-tab active" data-vsub="quiz">퀴즈</button>
+      <button class="sub-tab" data-vsub="table">활용표</button>
+    </div>
+    <div class="sub-tabs" id="verb-group-tabs">
+      <button class="sub-tab active" data-group="all">전체</button>
+      <button class="sub-tab" data-group="1">1그룹</button>
+      <button class="sub-tab" data-group="2">2그룹</button>
+      <button class="sub-tab" data-group="3">3그룹</button>
+    </div>
+    <div class="word-grid" id="verb-grid"></div>
+    <div id="verb-zone"></div>
+  `;
+
+  STATE.verbSubTab = 'quiz';
+  STATE.verbGroup = 'all';
+
+  content.querySelectorAll('#verb-sub-tabs .sub-tab').forEach(btn =>
+    btn.addEventListener('click', () => {
+      STATE.verbSubTab = btn.dataset.vsub;
+      content.querySelectorAll('#verb-sub-tabs .sub-tab').forEach(b => b.classList.toggle('active', b === btn));
+      renderVerbZone();
+    })
+  );
+
+  content.querySelectorAll('#verb-group-tabs .sub-tab').forEach(btn =>
+    btn.addEventListener('click', () => {
+      STATE.verbGroup = btn.dataset.group;
+      content.querySelectorAll('#verb-group-tabs .sub-tab').forEach(b => b.classList.toggle('active', b === btn));
+      renderVerbGrid();
+      STATE.selectedWord = null;
+      renderVerbZone();
+    })
+  );
+
+  renderVerbGrid();
+  renderVerbZone();
+}
+
+function renderVerbGrid() {
+  const grid = document.getElementById('verb-grid');
+  if (!grid) return;
+  const filtered = STATE.verbGroup === 'all'
+    ? DATA.verbs
+    : DATA.verbs.filter(v => String(v.group) === STATE.verbGroup);
+
+  grid.innerHTML = '';
+  filtered.forEach(v => {
+    const chip = document.createElement('button');
+    chip.className = `word-chip ${STATE.selectedWord?.id === v.id ? 'selected' : ''}`;
+    chip.innerHTML = `
+      <span class="jp">${v.word}</span>
+      <span class="reading">${v.reading}</span>
+      <span class="kr">${v.meaning}</span>
+      <span class="reading" style="color:var(--accent);margin-top:2px">${v.group}그룹</span>
+    `;
+    chip.addEventListener('click', () => {
+      STATE.selectedWord = v;
+      STATE.answered = false;
+      STATE.currentQ = null;
+      grid.querySelectorAll('.word-chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      chip.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      renderVerbZone();
+    });
+    grid.appendChild(chip);
+  });
+}
+
+function renderVerbZone() {
+  const zone = document.getElementById('verb-zone');
+  if (!zone) return;
+  if (!STATE.selectedWord) {
+    zone.innerHTML = `
+      <div class="empty-state">
+        <div class="big">👆</div>
+        <p>위에서 동사를 선택하세요</p>
+      </div>`;
+    return;
+  }
+  if (STATE.verbSubTab === 'table') {
+    renderVerbTable(STATE.selectedWord, zone);
+  } else {
+    renderVerbQuiz(zone);
+  }
+}
+
+function renderVerbTable(verbObj, container) {
+  const forms = VerbConj.conjugate(verbObj);
+  const groupLabel = ['', '1그룹 (五段)', '2그룹 (一段)', '3그룹 (불규칙)'][verbObj.group];
+  const rows = forms.map(f => `
+    <tr>
+      <td>${f.label}</td>
+      <td style="font-family:'Noto Sans JP',sans-serif;font-size:15px">${f.form}</td>
+    </tr>
+  `).join('');
+  container.innerHTML = `
+    <div style="margin-bottom:12px;padding:10px 12px;background:var(--accent-soft);
+                border:1px solid var(--accent);border-radius:var(--radius-sm);
+                font-size:13px;color:var(--accent)">${groupLabel}</div>
+    <table class="conj-table">
+      <thead><tr><th>형태</th><th>${verbObj.word}（${verbObj.reading}）</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="height:20px"></div>
+  `;
+}
+
+function renderVerbQuiz(container) {
+  const verbObj = STATE.selectedWord;
+  const filtered = STATE.verbGroup === 'all'
+    ? DATA.verbs
+    : DATA.verbs.filter(v => String(v.group) === STATE.verbGroup);
+
+  const q = VerbConj.makeQuestion(verbObj, DATA.verbs);
+  if (!q) { container.innerHTML = '<div class="empty-state"><p>문제를 생성할 수 없습니다</p></div>'; return; }
+  STATE.currentQ = q;
+  STATE.answered = false;
+
+  const today = Store.getTodayStats();
+
+  container.innerHTML = `
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val">${today.total}</div>
+        <div class="stat-label">오늘 문제 수</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">${today.total > 0 ? Math.round(today.correct/today.total*100) : 0}%</div>
+        <div class="stat-label">정답률</div>
+      </div>
+    </div>
+    <div class="quiz-area">
+      ${buildVerbPromptHTML(q)}
+      <div class="options-grid" id="options"></div>
+      <div class="feedback" id="feedback"></div>
+      <button class="btn-primary" id="next-btn" style="display:none">다음 문제 →</button>
+      <button class="btn-secondary" id="skip-btn">다른 문제</button>
+    </div>
+  `;
+
+  const optGrid = container.querySelector('#options');
+  q.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.addEventListener('click', () => handleVerbAnswer(opt, q));
+    optGrid.appendChild(btn);
+  });
+
+  container.querySelector('#next-btn').addEventListener('click', () => renderVerbQuiz(container));
+  container.querySelector('#skip-btn').addEventListener('click', () => renderVerbQuiz(container));
+}
+
+function buildVerbPromptHTML(q) {
+  if (q.promptType === 'group') {
+    return `
+      <div class="quiz-prompt">
+        <div class="prompt-label">그룹을 고르세요</div>
+        <div class="prompt-word">${q.word}</div>
+        <div class="prompt-reading">${q.reading}</div>
+        <div class="prompt-meaning">${q.meaning}</div>
+      </div>`;
+  }
+  if (q.promptType === 'meaning') {
+    return `
+      <div class="quiz-prompt">
+        <div class="prompt-label">뜻을 고르세요</div>
+        <div class="prompt-word">${q.word}</div>
+        <div class="prompt-reading">${q.reading}</div>
+      </div>`;
+  }
+  // form
+  return `
+    <div class="quiz-prompt">
+      <div class="prompt-label">활용형을 고르세요</div>
+      <div class="prompt-word">${q.word}</div>
+      <div class="prompt-reading">${q.reading} ／ ${q.meaning}</div>
+      <div class="prompt-target">${q.promptLabel}</div>
+    </div>`;
+}
+
+function handleVerbAnswer(chosen, q) {
+  if (STATE.answered) return;
+  STATE.answered = true;
+
+  const isCorrect = chosen === q.answer;
+  Store.recordAnswer(q.id, isCorrect);
+
+  document.querySelectorAll('.option-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.textContent === q.answer) btn.classList.add('correct');
+    else if (btn.textContent === chosen && !isCorrect) btn.classList.add('wrong');
+  });
+
+  const fb = document.getElementById('feedback');
+  fb.classList.add('show');
+  if (isCorrect) {
+    fb.classList.add('correct-fb');
+    fb.innerHTML = `<span>✓</span> 정답!`;
+  } else {
+    fb.classList.add('wrong-fb');
+    fb.innerHTML = `<span>✗</span> 오답. 정답: <span class="fb-answer">${q.answer}</span>`;
+  }
+
+  document.getElementById('next-btn').style.display = 'block';
+  document.getElementById('skip-btn').style.display = 'none';
+
   const today = Store.getTodayStats();
   const statCards = document.querySelectorAll('.stat-card');
   if (statCards[0]) statCards[0].querySelector('.stat-val').textContent = today.total;
