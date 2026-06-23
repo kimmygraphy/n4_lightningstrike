@@ -148,46 +148,42 @@ const VerbConj = (() => {
     };
   }
 
+  // label → 간단한 한국어 표시
+  const LABEL_KR = {
+    'ます형 (정중 긍정)':       '정중 긍정형',
+    'ません (정중 부정)':        '정중 부정형',
+    'ました (정중 과거)':        '정중 과거형',
+    'ませんでした (정중 과거부정)': '정중 과거 부정형',
+    'ない형 (보통 부정)':        '보통 부정형',
+    'て형':                    'て형',
+    'た형 (보통 과거)':          '보통 과거형',
+    '意志형 (～よう)':           '의지형 (~よう)',
+    '命令형':                  '명령형',
+    '禁止형 (～な)':             '금지형 (~な)',
+    '辞書형 (기본형)':           '기본형',
+  };
+
   // ── 활용형 문제 ───────────────────────────────────────
   function makeFormQuestion(verbObj, allVerbs) {
     const forms = conjugate(verbObj);
     if (!forms.length) return null;
 
-    // 출제할 형태 고르기 (랜덤)
     const target = forms[Math.floor(Math.random() * forms.length)];
 
-    // 오답: 같은 형태를 다른 동사에 적용
-    const distractors = new Set();
-    shuffle(allVerbs)
-      .filter(v => v.id !== verbObj.id)
-      .slice(0, 5)
-      .forEach(v => {
-        const fs = conjugate(v);
-        const match = fs.find(f => f.label === target.label);
-        if (match && match.form !== target.form) distractors.add(match.form);
-      });
-
-    // 같은 동사의 다른 형태도 오답 후보로
-    forms
-      .filter(f => f.form !== target.form)
-      .forEach(f => distractors.add(f.form));
-
-    const opts = [target.form, ...shuffle([...distractors]).slice(0, 3)];
-    if (opts.length < 4) {
-      // 패딩 (혹시 부족할 경우)
-      const pads = ['食べます', 'きます', 'しない', 'よんで'];
-      pads.forEach(p => { if (!opts.includes(p) && opts.length < 4) opts.push(p); });
-    }
+    // 오답: 같은 동사의 다른 활용형에서만
+    const distractors = shuffle(
+      forms.filter(f => f.form !== target.form).map(f => f.form)
+    ).slice(0, 3);
 
     return {
       id: `${verbObj.id}_${target.label}`,
       promptType: 'form',
-      promptLabel: target.label,
+      promptLabel: LABEL_KR[target.label] || target.label,
       word: verbObj.word,
       reading: verbObj.reading,
       meaning: verbObj.meaning,
       answer: target.form,
-      options: shuffle(opts.slice(0, 4)),
+      options: shuffle([target.form, ...distractors]),
     };
   }
 
