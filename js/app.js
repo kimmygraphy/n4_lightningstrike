@@ -18,6 +18,8 @@ let STATE = {
   todayIdx: 0,
   todayCorrect: 0,
   todayAnswered: false,
+  rulesTab: 'noun',
+  rulesVerbForm: 'masu',
 };
 
 // ─── Boot ─────────────────────────────────────────────
@@ -58,6 +60,7 @@ const TABS = [
   { id: 'naadj', icon: 'な', label: 'な형용사' },
   { id: 'verb',  icon: '動', label: '동사' },
   { id: 'wrong', icon: '✗',  label: '오답노트' },
+  { id: 'rules', icon: '📋', label: '규칙' },
 ];
 
 function renderNav() {
@@ -89,6 +92,7 @@ function switchTab(id) {
   if (id === 'naadj') renderWordTab('naadj', DATA.naAdj,  Conj.naAdj);
   if (id === 'verb')  renderVerbTab();
   if (id === 'wrong') renderWrongTab();
+  if (id === 'rules') renderRulesTab();
 }
 
 // ─── Today's 20 Questions ─────────────────────────────
@@ -738,6 +742,396 @@ function renderWrongTab() {
       </div>
     </div>
     ${rows}
+  `;
+}
+
+// ─── Rules Tab ────────────────────────────────────────
+const RULES_TABS = [
+  { id: 'noun',  label: '명사' },
+  { id: 'iadj',  label: 'い형용사' },
+  { id: 'naadj', label: 'な형용사' },
+  { id: 'v1',    label: '동사 1그룹' },
+  { id: 'v2',    label: '동사 2그룹' },
+  { id: 'v3',    label: '동사 3그룹' },
+];
+
+const VERB_FORM_TABS = [
+  { id: 'masu',  label: 'ます형' },
+  { id: 'nai',   label: 'ない형' },
+  { id: 'te',    label: 'て형' },
+  { id: 'ta',    label: 'た형' },
+  { id: 'voli',  label: '意志형' },
+  { id: 'imp',   label: '命令형' },
+  { id: 'kinjsi',label: '禁止형' },
+];
+
+function renderRulesTab() {
+  if (!STATE.rulesTab) STATE.rulesTab = 'noun';
+  if (!STATE.rulesVerbForm) STATE.rulesVerbForm = 'masu';
+
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <p class="section-title">활용 규칙</p>
+    <div class="sub-tabs" id="rules-main-tabs">
+      ${RULES_TABS.map(t => `
+        <button class="sub-tab ${STATE.rulesTab === t.id ? 'active' : ''}" data-rtab="${t.id}">${t.label}</button>
+      `).join('')}
+    </div>
+    <div id="rules-verb-form-tabs"></div>
+    <div id="rules-content"></div>
+  `;
+
+  content.querySelectorAll('#rules-main-tabs .sub-tab').forEach(btn =>
+    btn.addEventListener('click', () => {
+      STATE.rulesTab = btn.dataset.rtab;
+      STATE.rulesVerbForm = 'masu';
+      content.querySelectorAll('#rules-main-tabs .sub-tab').forEach(b => b.classList.toggle('active', b === btn));
+      renderRulesContent();
+    })
+  );
+
+  renderRulesContent();
+}
+
+function renderRulesContent() {
+  const content = document.getElementById('content');
+  const verbFormArea = content.querySelector('#rules-verb-form-tabs');
+  const rulesArea = content.querySelector('#rules-content');
+
+  // 동사일 때만 하위탭 표시
+  const isVerb = ['v1','v2','v3'].includes(STATE.rulesTab);
+  if (isVerb) {
+    verbFormArea.innerHTML = `
+      <div class="sub-tabs" style="margin-bottom:16px">
+        ${VERB_FORM_TABS.map(t => `
+          <button class="sub-tab ${STATE.rulesVerbForm === t.id ? 'active' : ''}" data-vform="${t.id}">${t.label}</button>
+        `).join('')}
+      </div>`;
+    verbFormArea.querySelectorAll('.sub-tab').forEach(btn =>
+      btn.addEventListener('click', () => {
+        STATE.rulesVerbForm = btn.dataset.vform;
+        verbFormArea.querySelectorAll('.sub-tab').forEach(b => b.classList.toggle('active', b === btn));
+        rulesArea.innerHTML = buildRulesHTML();
+      })
+    );
+  } else {
+    verbFormArea.innerHTML = '';
+  }
+
+  rulesArea.innerHTML = buildRulesHTML();
+}
+
+function buildRulesHTML() {
+  const t = STATE.rulesTab;
+  if (t === 'noun')  return rulesNoun();
+  if (t === 'iadj')  return rulesIAdj();
+  if (t === 'naadj') return rulesNaAdj();
+  if (t === 'v1')    return rulesV1(STATE.rulesVerbForm);
+  if (t === 'v2')    return rulesV2(STATE.rulesVerbForm);
+  if (t === 'v3')    return rulesV3(STATE.rulesVerbForm);
+  return '';
+}
+
+function ruleTable(rows) {
+  // rows: [{ label, plain, polite, example }]
+  return `
+    <table class="conj-table" style="margin-bottom:20px">
+      <thead>
+        <tr>
+          <th>형태</th>
+          <th>보통체</th>
+          <th>정중체</th>
+          <th style="color:var(--accent2)">예시</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${r.label}</td>
+            <td class="conj-plain">${r.plain}</td>
+            <td class="conj-polite">${r.polite}</td>
+            <td style="color:var(--accent2);font-family:'Noto Sans JP',sans-serif">${r.ex}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function verbRuleTable(rows, note) {
+  // rows: [{ ending, result, example }]
+  return `
+    ${note ? `<div style="margin-bottom:12px;padding:10px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:13px;color:var(--accent)">${note}</div>` : ''}
+    <table class="conj-table" style="margin-bottom:20px">
+      <thead>
+        <tr>
+          <th>기본형 어미</th>
+          <th>변환 결과</th>
+          <th style="color:var(--accent2)">예시</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td style="font-family:'Noto Sans JP',sans-serif;font-size:16px">${r.ending}</td>
+            <td style="font-family:'Noto Sans JP',sans-serif;font-size:15px">${r.result}</td>
+            <td style="color:var(--accent2);font-family:'Noto Sans JP',sans-serif">${r.ex}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function exBox(label, text) {
+  return `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:8px;font-size:13px">
+    <span style="color:var(--text-dimmer)">${label}　</span>
+    <span style="font-family:'Noto Sans JP',sans-serif;font-size:15px">${text}</span>
+  </div>`;
+}
+
+function warnBox(text) {
+  return `<div style="background:#2a1f00;border:1px solid #f7a26a;border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--accent2)">⚠️ ${text}</div>`;
+}
+
+// ── 명사 규칙 ──────────────────────────────────────────
+function rulesNoun() {
+  return `
+    <p class="section-title" style="margin-bottom:12px">명사 활용 규칙</p>
+    ${ruleTable([
+      { label: '현재 긍정', plain: '〇〇だ',          polite: '〇〇です',              ex: '本だ／本です' },
+      { label: '현재 부정', plain: '〇〇じゃない',     polite: '〇〇じゃありません',     ex: '本じゃない' },
+      { label: '과거 긍정', plain: '〇〇だった',       polite: '〇〇でした',             ex: '本だった' },
+      { label: '과거 부정', plain: '〇〇じゃなかった', polite: '〇〇じゃありませんでした', ex: '本じゃなかった' },
+    ])}
+    ${exBox('예시', '学生だ → 학생이다 / 学生でした → 학생이었습니다')}
+  `;
+}
+
+// ── い형용사 규칙 ──────────────────────────────────────
+function rulesIAdj() {
+  return `
+    <p class="section-title" style="margin-bottom:12px">い형용사 활용 규칙</p>
+    <div style="margin-bottom:12px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:13px;color:var(--text-dim)">
+      어간 = い를 뗀 나머지　예) おいし<strong style="color:var(--text)">い</strong> → 어간: おいし
+    </div>
+    ${ruleTable([
+      { label: '현재 긍정', plain: '어간＋い',         polite: '어간＋いです',       ex: 'おいしい／おいしいです' },
+      { label: '현재 부정', plain: '어간＋くない',      polite: '어간＋くないです',   ex: 'おいしくない' },
+      { label: '과거 긍정', plain: '어간＋かった',      polite: '어간＋かったです',   ex: 'おいしかった' },
+      { label: '과거 부정', plain: '어간＋くなかった',  polite: '어간＋くなかったです', ex: 'おいしくなかった' },
+      { label: 'て형 (연결)', plain: '어간＋くて',      polite: '―',               ex: 'おいしくて' },
+      { label: '부사형',     plain: '어간＋く',         polite: '―',               ex: 'おいしく食べる' },
+    ])}
+    ${warnBox('いい (좋다) 는 불규칙! 어간이 よ로 바뀜: よくない／よかった／よくなかった')}
+  `;
+}
+
+// ── な형용사 규칙 ──────────────────────────────────────
+function rulesNaAdj() {
+  return `
+    <p class="section-title" style="margin-bottom:12px">な형용사 활용 규칙</p>
+    <div style="margin-bottom:12px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:13px;color:var(--text-dim)">
+      명사 활용과 거의 동일. 명사 수식 시 <strong style="color:var(--text)">な</strong>를 붙임.
+    </div>
+    ${ruleTable([
+      { label: '현재 긍정', plain: '〇〇だ',          polite: '〇〇です',              ex: '静かだ／静かです' },
+      { label: '현재 부정', plain: '〇〇じゃない',     polite: '〇〇じゃありません',     ex: '静かじゃない' },
+      { label: '과거 긍정', plain: '〇〇だった',       polite: '〇〇でした',             ex: '静かでした' },
+      { label: '과거 부정', plain: '〇〇じゃなかった', polite: '〇〇じゃありませんでした', ex: '静かじゃなかった' },
+      { label: 'て형 (연결)', plain: '〇〇で',         polite: '―',                    ex: '静かで' },
+      { label: '부사형',     plain: '〇〇に',          polite: '―',                    ex: '静かに話す' },
+    ])}
+  `;
+}
+
+// ── 동사 1그룹 규칙 ───────────────────────────────────
+function rulesV1(form) {
+  const maps = {
+    masu: {
+      title: 'ます형 (정중 긍정)',
+      note: '어미를 い단으로 바꾸고 ます를 붙임',
+      rows: [
+        { ending: 'く', result: 'き＋ます', ex: '書く → 書きます' },
+        { ending: 'ぐ', result: 'ぎ＋ます', ex: '泳ぐ → 泳ぎます' },
+        { ending: 'す', result: 'し＋ます', ex: '話す → 話します' },
+        { ending: 'つ', result: 'ち＋ます', ex: '待つ → 待ちます' },
+        { ending: 'ぬ', result: 'に＋ます', ex: '死ぬ → 死にます' },
+        { ending: 'ぶ', result: 'び＋ます', ex: '飛ぶ → 飛びます' },
+        { ending: 'む', result: 'み＋ます', ex: '読む → 読みます' },
+        { ending: 'る', result: 'り＋ます', ex: '乗る → 乗ります' },
+        { ending: 'う', result: 'い＋ます', ex: '買う → 買います' },
+      ]
+    },
+    nai: {
+      title: 'ない형 (보통 부정)',
+      note: '어미를 あ단으로 바꾸고 ない를 붙임 (う→わ 주의!)',
+      rows: [
+        { ending: 'く', result: 'か＋ない', ex: '書く → 書かない' },
+        { ending: 'ぐ', result: 'が＋ない', ex: '泳ぐ → 泳がない' },
+        { ending: 'す', result: 'さ＋ない', ex: '話す → 話さない' },
+        { ending: 'つ', result: 'た＋ない', ex: '待つ → 待たない' },
+        { ending: 'ぬ', result: 'な＋ない', ex: '死ぬ → 死なない' },
+        { ending: 'ぶ', result: 'ば＋ない', ex: '飛ぶ → 飛ばない' },
+        { ending: 'む', result: 'ま＋ない', ex: '読む → 読まない' },
+        { ending: 'る', result: 'ら＋ない', ex: '乗る → 乗らない' },
+        { ending: 'う', result: 'わ＋ない', ex: '買う → 買わない' },
+      ]
+    },
+    te: {
+      title: 'て형',
+      note: 'く→いて, ぐ→いで, す→して, 촉음편(つ/ぶ/む/る/う→って/んで)',
+      rows: [
+        { ending: 'く', result: 'いて', ex: '書く → 書いて' },
+        { ending: 'ぐ', result: 'いで', ex: '泳ぐ → 泳いで' },
+        { ending: 'す', result: 'して', ex: '話す → 話して' },
+        { ending: 'つ', result: 'って', ex: '待つ → 待って' },
+        { ending: 'ぬ', result: 'んで', ex: '死ぬ → 死んで' },
+        { ending: 'ぶ', result: 'んで', ex: '飛ぶ → 飛んで' },
+        { ending: 'む', result: 'んで', ex: '読む → 読んで' },
+        { ending: 'る', result: 'って', ex: '乗る → 乗って' },
+        { ending: 'う', result: 'って', ex: '買う → 買って' },
+      ],
+      extra: warnBox('行く만 예외! く→いて가 아닌 → <span style="font-family:Noto Sans JP">いって</span> (行って)')
+    },
+    ta: {
+      title: 'た형 (보통 과거)',
+      note: 'て형에서 て→た, で→だ 로 바꾸면 됨',
+      rows: [
+        { ending: 'く', result: 'いた', ex: '書く → 書いた' },
+        { ending: 'ぐ', result: 'いだ', ex: '泳ぐ → 泳いだ' },
+        { ending: 'す', result: 'した', ex: '話す → 話した' },
+        { ending: 'つ', result: 'った', ex: '待つ → 待った' },
+        { ending: 'ぬ', result: 'んだ', ex: '死ぬ → 死んだ' },
+        { ending: 'ぶ', result: 'んだ', ex: '飛ぶ → 飛んだ' },
+        { ending: 'む', result: 'んだ', ex: '読む → 読んだ' },
+        { ending: 'る', result: 'った', ex: '乗る → 乗った' },
+        { ending: 'う', result: 'った', ex: '買う → 買った' },
+      ],
+      extra: warnBox('行く만 예외! → <span style="font-family:Noto Sans JP">いった</span> (行った)')
+    },
+    voli: {
+      title: '意志형 (~よう / ~おう)',
+      note: '어미를 お단으로 바꾸고 う를 붙임',
+      rows: [
+        { ending: 'く', result: 'こう', ex: '書く → 書こう' },
+        { ending: 'ぐ', result: 'ごう', ex: '泳ぐ → 泳ごう' },
+        { ending: 'す', result: 'そう', ex: '話す → 話そう' },
+        { ending: 'つ', result: 'とう', ex: '待つ → 待とう' },
+        { ending: 'ぬ', result: 'のう', ex: '死ぬ → 死のう' },
+        { ending: 'ぶ', result: 'ぼう', ex: '飛ぶ → 飛ぼう' },
+        { ending: 'む', result: 'もう', ex: '読む → 読もう' },
+        { ending: 'る', result: 'ろう', ex: '乗る → 乗ろう' },
+        { ending: 'う', result: 'おう', ex: '買う → 買おう' },
+      ]
+    },
+    imp: {
+      title: '命令형',
+      note: '어미를 え단으로 바꿈',
+      rows: [
+        { ending: 'く', result: 'け',  ex: '書く → 書け' },
+        { ending: 'ぐ', result: 'げ',  ex: '泳ぐ → 泳げ' },
+        { ending: 'す', result: 'せ',  ex: '話す → 話せ' },
+        { ending: 'つ', result: 'て',  ex: '待つ → 待て' },
+        { ending: 'ぬ', result: 'ね',  ex: '死ぬ → 死ね' },
+        { ending: 'ぶ', result: 'べ',  ex: '飛ぶ → 飛べ' },
+        { ending: 'む', result: 'め',  ex: '読む → 読め' },
+        { ending: 'る', result: 'れ',  ex: '乗る → 乗れ' },
+        { ending: 'う', result: 'え',  ex: '買う → 買え' },
+      ]
+    },
+    kinjsi: {
+      title: '禁止형 (~な)',
+      note: '기본형 그대로에 な를 붙임. 모든 어미 동일!',
+      rows: [
+        { ending: 'く', result: 'く＋な', ex: '書く → 書くな' },
+        { ending: 'ぐ', result: 'ぐ＋な', ex: '泳ぐ → 泳ぐな' },
+        { ending: 'す', result: 'す＋な', ex: '話す → 話すな' },
+        { ending: 'つ', result: 'つ＋な', ex: '待つ → 待つな' },
+        { ending: 'ぬ', result: 'ぬ＋な', ex: '死ぬ → 死ぬな' },
+        { ending: 'ぶ', result: 'ぶ＋な', ex: '飛ぶ → 飛ぶな' },
+        { ending: 'む', result: 'む＋な', ex: '読む → 読むな' },
+        { ending: 'る', result: 'る＋な', ex: '乗る → 乗るな' },
+        { ending: 'う', result: 'う＋な', ex: '買う → 買うな' },
+      ]
+    },
+  };
+
+  const m = maps[form];
+  if (!m) return '';
+  return `
+    <p class="section-title" style="margin-bottom:12px">1그룹 동사 — ${m.title}</p>
+    ${verbRuleTable(m.rows, m.note)}
+    ${m.extra || ''}
+  `;
+}
+
+// ── 동사 2그룹 규칙 ───────────────────────────────────
+function rulesV2(form) {
+  const stem = '어간 (る를 뗀 나머지)';
+  const maps = {
+    masu:   { title: 'ます형',   rule: '어간＋ます',       ex: '食べる → 食べます' },
+    nai:    { title: 'ない형',   rule: '어간＋ない',       ex: '食べる → 食べない' },
+    te:     { title: 'て형',     rule: '어간＋て',         ex: '食べる → 食べて' },
+    ta:     { title: 'た형',     rule: '어간＋た',         ex: '食べる → 食べた' },
+    voli:   { title: '意志형',   rule: '어간＋よう',       ex: '食べる → 食べよう' },
+    imp:    { title: '命令형',   rule: '어간＋ろ',         ex: '食べる → 食べろ' },
+    kinjsi: { title: '禁止형',   rule: '기본형＋な',       ex: '食べる → 食べるな' },
+  };
+  const m = maps[form];
+  if (!m) return '';
+  return `
+    <p class="section-title" style="margin-bottom:12px">2그룹 동사 — ${m.title}</p>
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:12px;color:var(--text-dimmer);margin-bottom:6px">규칙</div>
+      <div style="font-size:15px;color:var(--text)">${m.rule}</div>
+    </div>
+    ${exBox('예시', m.ex)}
+    ${exBox('예시', m.ex.includes('食べ') ? '見る → ' + m.ex.replace('食べ','見').replace('ます','ます').replace('ない','ない') : '')}
+    <div style="margin-top:16px;padding:12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:13px;color:var(--accent)">
+      💡 2그룹은 모든 활용이 <strong>어간＋어미</strong>로 일정해서 규칙적!
+    </div>
+  `;
+}
+
+// ── 동사 3그룹 규칙 ───────────────────────────────────
+function rulesV3(form) {
+  const maps = {
+    masu:   { suru: 'します',       kuru: 'きます' },
+    nai:    { suru: 'しない',       kuru: 'こない' },
+    te:     { suru: 'して',         kuru: 'きて' },
+    ta:     { suru: 'した',         kuru: 'きた' },
+    voli:   { suru: 'しよう',       kuru: 'こよう' },
+    imp:    { suru: 'しろ',         kuru: 'こい' },
+    kinjsi: { suru: 'するな',       kuru: '来るな' },
+  };
+  const formLabels = {
+    masu: 'ます형', nai: 'ない형', te: 'て형',
+    ta: 'た형', voli: '意志형', imp: '命令형', kinjsi: '禁止형'
+  };
+  const m = maps[form];
+  if (!m) return '';
+  return `
+    <p class="section-title" style="margin-bottom:12px">3그룹 동사 — ${formLabels[form]}</p>
+    ${warnBox('3그룹은 규칙 없음. 통째로 암기!')}
+    <table class="conj-table" style="margin-bottom:20px">
+      <thead>
+        <tr><th>기본형</th><th>뜻</th><th style="color:var(--accent2)">${formLabels[form]}</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-family:'Noto Sans JP',sans-serif;font-size:16px">する</td>
+          <td>하다</td>
+          <td style="font-family:'Noto Sans JP',sans-serif;font-size:15px;color:var(--accent2)">${m.suru}</td>
+        </tr>
+        <tr>
+          <td style="font-family:'Noto Sans JP',sans-serif;font-size:16px">来る</td>
+          <td>오다</td>
+          <td style="font-family:'Noto Sans JP',sans-serif;font-size:15px;color:var(--accent2)">${m.kuru}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="padding:12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:13px;color:var(--text-dim)">
+      ～する 복합동사 (勉強する, 運動する 등)는 する와 동일하게 활용
+    </div>
   `;
 }
 
