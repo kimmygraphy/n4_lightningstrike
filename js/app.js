@@ -763,10 +763,8 @@ function renderWrongTab() {
   `;
 
   content.querySelector('#wrong-quiz-btn').addEventListener('click', () => {
-    STATE.wrongQs = generateWrongQuestions(entries);
-    STATE.wrongIdx = 0;
-    STATE.wrongAnswered = false;
-    renderWrongQuiz();
+    const qs = generateWrongQuestions(entries);
+    renderWrongQuiz(qs, 0);
   });
 }
 
@@ -790,17 +788,24 @@ function generateWrongQuestions(entries) {
   }).filter(Boolean);
 }
 
-function renderWrongQuiz() {
+function renderWrongQuiz(qs, idx) {
   const content = document.getElementById('content');
-  const { wrongQs, wrongIdx } = STATE;
-  const total = wrongQs.length;
+  const total = qs.length;
 
-  if (!wrongQs.length) {
-    renderWrongTab();
+  if (!total) {
+    content.innerHTML = `
+      <p class="section-title">오답 퀴즈</p>
+      <div class="empty-state">
+        <div class="big">🎉</div>
+        <p>출제할 문제가 없습니다!</p>
+      </div>
+      <button class="btn-secondary" id="back-btn">오답노트로 돌아가기</button>
+    `;
+    content.querySelector('#back-btn').addEventListener('click', () => renderWrongTab());
     return;
   }
 
-  if (wrongIdx >= total) {
+  if (idx >= total) {
     content.innerHTML = `
       <p class="section-title">오답 퀴즈 완료!</p>
       <div class="quiz-prompt" style="text-align:center;padding:32px 20px;margin-bottom:16px">
@@ -814,13 +819,13 @@ function renderWrongQuiz() {
     return;
   }
 
-  const q = wrongQs[wrongIdx];
-  const progress = Math.round((wrongIdx / total) * 100);
+  const q = qs[idx];
+  const progress = Math.round((idx / total) * 100);
 
   content.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <p class="section-title" style="margin:0">오답 퀴즈</p>
-      <span style="font-size:13px;color:var(--text-dim)">${wrongIdx + 1} / ${total}</span>
+      <span style="font-size:13px;color:var(--text-dim)">${idx + 1} / ${total}</span>
     </div>
     <div class="progress-wrap"><div class="progress-fill" style="width:${progress}%"></div></div>
     <div class="quiz-area">
@@ -828,54 +833,48 @@ function renderWrongQuiz() {
       <div class="options-grid" id="options"></div>
       <div class="feedback" id="feedback"></div>
       <button class="btn-primary" id="next-btn" style="display:none">
-        ${wrongIdx + 1 >= total ? '결과 보기 →' : '다음 →'}
+        ${idx + 1 >= total ? '결과 보기 →' : '다음 →'}
       </button>
     </div>
   `;
 
-  STATE.wrongAnswered = false;
-  content.querySelectorAll && content.querySelector('#options') && (() => {
-    const optGrid = content.querySelector('#options');
-    q.options.forEach(opt => {
-      const btn = document.createElement('button');
-      btn.className = 'option-btn';
-      btn.textContent = opt;
-      btn.addEventListener('click', () => handleWrongAnswer(opt, q));
-      optGrid.appendChild(btn);
+  let answered = false;
+  const optGrid = content.querySelector('#options');
+  q.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.addEventListener('click', () => {
+      if (answered) return;
+      answered = true;
+
+      const isCorrect = opt === q.answer;
+      const cat = q.category || 'verb';
+      Store.recordAnswer(q.origId || q.id, isCorrect, cat, { word: q.word, meaning: q.meaning, reading: q.reading });
+
+      optGrid.querySelectorAll('.option-btn').forEach(b => {
+        b.disabled = true;
+        if (b.textContent === q.answer) b.classList.add('correct');
+        else if (b.textContent === opt && !isCorrect) b.classList.add('wrong');
+      });
+
+      const fb = document.getElementById('feedback');
+      fb.classList.add('show');
+      if (isCorrect) {
+        fb.classList.add('correct-fb');
+        fb.innerHTML = `<span>✓</span> 정답!`;
+      } else {
+        fb.classList.add('wrong-fb');
+        fb.innerHTML = `<span>✗</span> 오답. 정답: <span class="fb-answer">${q.answer}</span>`;
+      }
+      document.getElementById('next-btn').style.display = 'block';
     });
-  })();
+    optGrid.appendChild(btn);
+  });
 
   content.querySelector('#next-btn').addEventListener('click', () => {
-    STATE.wrongIdx++;
-    renderWrongQuiz();
+    renderWrongQuiz(qs, idx + 1);
   });
-}
-
-function handleWrongAnswer(chosen, q) {
-  if (STATE.wrongAnswered) return;
-  STATE.wrongAnswered = true;
-
-  const isCorrect = chosen === q.answer;
-  const cat = q.category || 'verb';
-  // origId로 streak 업데이트 (원래 오답노트 항목에 반영)
-  Store.recordAnswer(q.origId || q.id, isCorrect, cat, { word: q.word, meaning: q.meaning, reading: q.reading });
-
-  document.querySelectorAll('.option-btn').forEach(btn => {
-    btn.disabled = true;
-    if (btn.textContent === q.answer) btn.classList.add('correct');
-    else if (btn.textContent === chosen && !isCorrect) btn.classList.add('wrong');
-  });
-
-  const fb = document.getElementById('feedback');
-  fb.classList.add('show');
-  if (isCorrect) {
-    fb.classList.add('correct-fb');
-    fb.innerHTML = `<span>✓</span> 정답!`;
-  } else {
-    fb.classList.add('wrong-fb');
-    fb.innerHTML = `<span>✗</span> 오답. 정답: <span class="fb-answer">${q.answer}</span>`;
-  }
-  document.getElementById('next-btn').style.display = 'block';
 }
 
 // ─── Rules Tab ────────────────────────────────────────
