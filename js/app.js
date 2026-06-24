@@ -771,20 +771,22 @@ function renderWrongTab() {
 }
 
 function generateWrongQuestions(entries) {
-  const sorted = [...entries].sort(([,a],[,b]) => b.wrongCount - a.wrongCount).slice(0, 20);
-  return sorted.map(([id, info]) => {
-    const baseId = id.split('_')[0]; // 'v15_ます형...' → 'v15'
+  const sorted = [...entries].sort(([,a],[,b]) => b.wrongCount - a.wrongCount);
+  return sorted.map(([origId, info]) => {
+    const baseId = origId.split('_')[0];
     const cat = info.category;
+    let q = null;
     if (cat === 'verb') {
       const verbObj = DATA.verbs.find(v => v.id === baseId);
-      if (verbObj) return { ...VerbConj.makeFormQuestion(verbObj, DATA.verbs), category: 'verb' };
+      if (verbObj) q = { ...VerbConj.makeFormQuestion(verbObj, DATA.verbs), category: 'verb' };
     } else {
       const words = cat === 'noun' ? DATA.nouns : cat === 'iadj' ? DATA.iAdj : DATA.naAdj;
       const conjFn = cat === 'noun' ? Conj.noun : cat === 'iadj' ? Conj.iAdj : Conj.naAdj;
       const wordObj = words.find(w => w.id === baseId);
-      if (wordObj) return { ...Conj.makeQuestion('form', wordObj, words, conjFn), category: cat };
+      if (wordObj) q = { ...Conj.makeQuestion('form', wordObj, words, conjFn), category: cat };
     }
-    return null;
+    if (q) q.origId = origId; // 원래 오답 ID 보존
+    return q;
   }).filter(Boolean);
 }
 
@@ -855,7 +857,8 @@ function handleWrongAnswer(chosen, q) {
 
   const isCorrect = chosen === q.answer;
   const cat = q.category || 'verb';
-  Store.recordAnswer(q.id, isCorrect, cat, { word: q.word, meaning: q.meaning, reading: q.reading });
+  // origId로 streak 업데이트 (원래 오답노트 항목에 반영)
+  Store.recordAnswer(q.origId || q.id, isCorrect, cat, { word: q.word, meaning: q.meaning, reading: q.reading });
 
   document.querySelectorAll('.option-btn').forEach(btn => {
     btn.disabled = true;
