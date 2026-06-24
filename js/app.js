@@ -708,6 +708,9 @@ function renderWrongTab() {
   const entries = Object.entries(wrongItems)
     .sort(([,a],[,b]) => b.wrongCount - a.wrongCount);
 
+  // 디버그: 실제 저장된 ID 확인
+  alert('IDs: ' + entries.map(([id]) => id).join(' | '));
+
   if (entries.length === 0) {
     content.innerHTML = `
       <p class="section-title">오답노트</p>
