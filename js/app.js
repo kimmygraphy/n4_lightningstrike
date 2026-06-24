@@ -768,18 +768,18 @@ function renderWrongTab() {
 }
 
 function generateWrongQuestions(entries) {
-  // 많이 틀린 순으로 정렬, 최대 20개
   const sorted = [...entries].sort(([,a],[,b]) => b.wrongCount - a.wrongCount).slice(0, 20);
   return sorted.map(([id, info]) => {
+    const baseId = id.split('_')[0]; // 'v15_ます형...' → 'v15'
     const cat = info.category;
     if (cat === 'verb') {
-      const verbObj = DATA.verbs.find(v => id.startsWith(v.id));
-      if (verbObj) return VerbConj.makeFormQuestion(verbObj, DATA.verbs);
+      const verbObj = DATA.verbs.find(v => v.id === baseId);
+      if (verbObj) return { ...VerbConj.makeFormQuestion(verbObj, DATA.verbs), category: 'verb' };
     } else {
       const words = cat === 'noun' ? DATA.nouns : cat === 'iadj' ? DATA.iAdj : DATA.naAdj;
       const conjFn = cat === 'noun' ? Conj.noun : cat === 'iadj' ? Conj.iAdj : Conj.naAdj;
-      const wordObj = words.find(w => id.startsWith(w.id));
-      if (wordObj) return Conj.makeQuestion('form', wordObj, words, conjFn);
+      const wordObj = words.find(w => w.id === baseId);
+      if (wordObj) return { ...Conj.makeQuestion('form', wordObj, words, conjFn), category: cat };
     }
     return null;
   }).filter(Boolean);
