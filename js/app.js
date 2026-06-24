@@ -709,7 +709,7 @@ function renderWrongTab() {
     .sort(([,a],[,b]) => b.wrongCount - a.wrongCount);
 
   // 디버그: 실제 저장된 ID 확인
-  alert('IDs: ' + entries.map(([id]) => id).join(' | '));
+  alert('IDs+CAT: ' + entries.map(([id, info]) => id + '(' + info.category + ')').join(' | '));
 
   if (entries.length === 0) {
     content.innerHTML = `
