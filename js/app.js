@@ -87,6 +87,9 @@ function switchTab(id) {
   STATE.selectedWord = null;
   STATE.currentQ = null;
   STATE.answered = false;
+  STATE.wrongQs = [];
+  STATE.wrongIdx = 0;
+  STATE.wrongAnswered = false;
   renderNav();
 
   if (id === 'today') renderTodayTab();
