@@ -1,8 +1,7 @@
-// ── storage.js ──
-// All localStorage interactions in one place
+// ── storage.js ── v2 (카테고리 + 졸업 시스템)
 
 const Store = (() => {
-  const KEY = 'jlpt_n4_v1';
+  const KEY = 'jlpt_n4_v2'; // v1 → v2로 변경해서 기존 데이터 리셋
 
   function load() {
     try {
@@ -24,26 +23,46 @@ const Store = (() => {
     return {
       streak: 0,
       lastStudyDate: null,
-      wrongItems: {},   // id → { wrongCount, lastWrong }
+      wrongItems: {},   // id → { wrongCount, lastWrong, category, word, meaning, correctStreak }
       sessionStats: {}, // date → { total, correct }
     };
   }
 
-  function recordAnswer(id, isCorrect) {
+  // category: 'noun' | 'iadj' | 'naadj' | 'verb'
+  // wordObj: { id, word, meaning, reading? }
+  function recordAnswer(id, isCorrect, category, wordObj) {
     const state = load();
+
     if (!isCorrect) {
-      const prev = state.wrongItems[id] || { wrongCount: 0, lastWrong: null };
+      const prev = state.wrongItems[id] || {
+        wrongCount: 0, lastWrong: null,
+        category, word: wordObj?.word, meaning: wordObj?.meaning,
+        reading: wordObj?.reading || '',
+        correctStreak: 0,
+      };
       state.wrongItems[id] = {
+        ...prev,
         wrongCount: prev.wrongCount + 1,
         lastWrong: todayStr(),
+        correctStreak: 0, // 틀리면 연속정답 리셋
+        category: category || prev.category,
+        word: wordObj?.word || prev.word,
+        meaning: wordObj?.meaning || prev.meaning,
+        reading: wordObj?.reading || prev.reading || '',
       };
     } else {
-      // Reduce wrong count by 1 if exists (correct answer helps)
       if (state.wrongItems[id]) {
-        state.wrongItems[id].wrongCount = Math.max(0, state.wrongItems[id].wrongCount - 1);
-        if (state.wrongItems[id].wrongCount === 0) delete state.wrongItems[id];
+        const prev = state.wrongItems[id];
+        const newStreak = (prev.correctStreak || 0) + 1;
+        if (newStreak >= 3) {
+          // 졸업!
+          delete state.wrongItems[id];
+        } else {
+          state.wrongItems[id] = { ...prev, correctStreak: newStreak };
+        }
       }
     }
+
     // session stats
     const d = todayStr();
     if (!state.sessionStats[d]) state.sessionStats[d] = { total: 0, correct: 0 };
