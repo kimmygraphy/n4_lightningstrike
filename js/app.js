@@ -708,8 +708,7 @@ function renderWrongTab() {
   const entries = Object.entries(wrongItems)
     .sort(([,a],[,b]) => b.wrongCount - a.wrongCount);
 
-  // 디버그: 실제 저장된 ID 확인
-  alert('IDs+CAT: ' + entries.map(([id, info]) => id + '(' + info.category + ')').join(' | '));
+  // (debug removed)
 
   if (entries.length === 0) {
     content.innerHTML = `
@@ -777,16 +776,22 @@ function generateWrongQuestions(entries) {
     const baseId = origId.split('_')[0];
     const cat = info.category;
     let q = null;
-    if (cat === 'verb') {
+
+    if (cat === 'verb' || cat === '동사') {
       const verbObj = DATA.verbs.find(v => v.id === baseId);
-      if (verbObj) q = { ...VerbConj.makeFormQuestion(verbObj, DATA.verbs), category: 'verb' };
-    } else {
-      const words = cat === 'noun' ? DATA.nouns : cat === 'iadj' ? DATA.iAdj : DATA.naAdj;
-      const conjFn = cat === 'noun' ? Conj.noun : cat === 'iadj' ? Conj.iAdj : Conj.naAdj;
-      const wordObj = words.find(w => w.id === baseId);
-      if (wordObj) q = { ...Conj.makeQuestion('form', wordObj, words, conjFn), category: cat };
+      if (verbObj) q = { ...VerbConj.makeFormQuestion(verbObj, DATA.verbs), category: cat };
+    } else if (cat === 'noun' || cat === '명사') {
+      const wordObj = DATA.nouns.find(w => w.id === baseId);
+      if (wordObj) q = { ...Conj.makeQuestion('form', wordObj, DATA.nouns, Conj.noun), category: cat };
+    } else if (cat === 'iadj' || cat === 'い형용사') {
+      const wordObj = DATA.iAdj.find(w => w.id === baseId);
+      if (wordObj) q = { ...Conj.makeQuestion('form', wordObj, DATA.iAdj, Conj.iAdj), category: cat };
+    } else if (cat === 'naadj' || cat === 'な형용사') {
+      const wordObj = DATA.naAdj.find(w => w.id === baseId);
+      if (wordObj) q = { ...Conj.makeQuestion('form', wordObj, DATA.naAdj, Conj.naAdj), category: cat };
     }
-    if (q) q.origId = origId; // 원래 오답 ID 보존
+
+    if (q) q.origId = origId;
     return q;
   }).filter(Boolean);
 }
