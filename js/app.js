@@ -20,6 +20,9 @@ let STATE = {
   todayAnswered: false,
   rulesTab: 'noun',
   rulesVerbForm: 'masu',
+  wrongQs: [],
+  wrongIdx: 0,
+  wrongAnswered: false,
 };
 
 // ─── Boot ─────────────────────────────────────────────
@@ -254,7 +257,7 @@ function handleTodayAnswer(chosen, q) {
 
   const isCorrect = chosen === q.answer;
   if (isCorrect) STATE.todayCorrect++;
-  Store.recordAnswer(q.id, isCorrect);
+  Store.recordAnswer(q.id, isCorrect, q.category, { word: q.word, meaning: q.meaning, reading: q.reading });
 
   document.querySelectorAll('.option-btn').forEach(btn => {
     btn.disabled = true;
@@ -440,7 +443,8 @@ function handleAnswer(chosen, q, type, words, conjFn) {
   STATE.answered = true;
 
   const isCorrect = chosen === q.answer;
-  Store.recordAnswer(q.id, isCorrect);
+  const cat = type === 'noun' ? 'noun' : type === 'iadj' ? 'iadj' : 'naadj';
+  Store.recordAnswer(q.id, isCorrect, cat, { word: q.word, meaning: q.meaning || q.answer, reading: q.reading });
 
   // color options
   document.querySelectorAll('.option-btn').forEach(btn => {
@@ -663,7 +667,7 @@ function handleVerbAnswer(chosen, q) {
   STATE.answered = true;
 
   const isCorrect = chosen === q.answer;
-  Store.recordAnswer(q.id, isCorrect);
+  Store.recordAnswer(q.id, isCorrect, 'verb', { word: q.word, meaning: q.meaning, reading: q.reading });
 
   document.querySelectorAll('.option-btn').forEach(btn => {
     btn.disabled = true;
@@ -692,6 +696,9 @@ function handleVerbAnswer(chosen, q) {
 }
 
 // ─── Wrong Items Tab ──────────────────────────────────
+const CAT_LABEL = { noun: '명사', iadj: 'い형용사', naadj: 'な형용사', verb: '동사' };
+const CAT_COLOR = { noun: '#7c6af7', iadj: '#4ade80', naadj: '#f7a26a', verb: '#f87171' };
+
 function renderWrongTab() {
   const content = document.getElementById('content');
   const wrongItems = Store.getWrongItems();
@@ -703,28 +710,41 @@ function renderWrongTab() {
       <p class="section-title">오답노트</p>
       <div class="empty-state">
         <div class="big">🎉</div>
-        <p>아직 틀린 문제가 없습니다.<br>퀴즈를 풀면 여기에 기록됩니다.</p>
+        <p>틀린 문제가 없습니다!<br>퀴즈를 풀면 여기에 기록됩니다.</p>
       </div>`;
     return;
   }
 
-  // Build list with word lookups
-  const allWords = [...DATA.nouns, ...DATA.iAdj, ...DATA.naAdj];
+  const totalWrong = entries.reduce((s,[,v]) => s + v.wrongCount, 0);
+
   const rows = entries.map(([id, info]) => {
-    const word = allWords.find(w => id.startsWith(w.id));
-    if (!word) return '';
+    const streakDots = [0,1,2].map(i =>
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;
+        background:${i < (info.correctStreak||0) ? 'var(--correct)' : 'var(--border)'}"></span>`
+    ).join('');
+    const catColor = CAT_COLOR[info.category] || 'var(--accent)';
+    const catLabel = CAT_LABEL[info.category] || '';
     return `
-      <div style="display:flex;align-items:center;justify-content:space-between;
-                  padding:12px;background:var(--surface);border:1px solid var(--border);
+      <div style="padding:12px;background:var(--surface);border:1px solid var(--border);
                   border-radius:var(--radius-sm);margin-bottom:8px;">
-        <div>
-          <div style="font-family:'Noto Sans JP',sans-serif;font-size:16px">${word.word}</div>
-          <div style="font-size:12px;color:var(--text-dim);margin-top:2px">${word.meaning}</div>
-          <div style="font-size:11px;color:var(--text-dimmer);margin-top:2px">마지막 오답: ${info.lastWrong}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'Noto Sans JP',sans-serif;font-size:18px;font-weight:500">${info.word || id}</span>
+            ${info.reading ? `<span style="font-size:12px;color:var(--text-dimmer);font-family:'Noto Sans JP',sans-serif">${info.reading}</span>` : ''}
+          </div>
+          <span style="font-size:11px;background:${catColor}22;color:${catColor};
+                       border-radius:4px;padding:2px 8px;border:1px solid ${catColor}44">${catLabel}</span>
         </div>
-        <div style="text-align:right">
-          <div style="color:var(--wrong);font-size:18px;font-weight:700">${info.wrongCount}</div>
-          <div style="font-size:11px;color:var(--text-dimmer)">오답 횟수</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">${info.meaning || ''}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:11px;color:var(--text-dimmer);margin-bottom:4px">연속 정답 (3번이면 졸업)</div>
+            <div>${streakDots}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="color:var(--wrong);font-size:16px;font-weight:700">${info.wrongCount}회 오답</div>
+            <div style="font-size:11px;color:var(--text-dimmer);margin-top:2px">${info.lastWrong || ''}</div>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -732,17 +752,124 @@ function renderWrongTab() {
   content.innerHTML = `
     <p class="section-title">오답노트 (${entries.length}개)</p>
     <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-val">${entries.length}</div>
-        <div class="stat-label">틀린 단어</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">${entries.reduce((s,[,v])=>s+v.wrongCount,0)}</div>
-        <div class="stat-label">총 오답 수</div>
-      </div>
+      <div class="stat-card"><div class="stat-val">${entries.length}</div><div class="stat-label">틀린 단어</div></div>
+      <div class="stat-card"><div class="stat-val">${totalWrong}</div><div class="stat-label">총 오답 수</div></div>
     </div>
+    <button class="btn-primary" id="wrong-quiz-btn" style="margin-bottom:16px">틀린 문제 퀴즈 시작 →</button>
     ${rows}
   `;
+
+  content.querySelector('#wrong-quiz-btn').addEventListener('click', () => {
+    STATE.wrongQs = generateWrongQuestions(entries);
+    STATE.wrongIdx = 0;
+    STATE.wrongAnswered = false;
+    renderWrongQuiz();
+  });
+}
+
+function generateWrongQuestions(entries) {
+  // 많이 틀린 순으로 정렬, 최대 20개
+  const sorted = [...entries].sort(([,a],[,b]) => b.wrongCount - a.wrongCount).slice(0, 20);
+  return sorted.map(([id, info]) => {
+    const cat = info.category;
+    if (cat === 'verb') {
+      const verbObj = DATA.verbs.find(v => id.startsWith(v.id));
+      if (verbObj) return VerbConj.makeFormQuestion(verbObj, DATA.verbs);
+    } else {
+      const words = cat === 'noun' ? DATA.nouns : cat === 'iadj' ? DATA.iAdj : DATA.naAdj;
+      const conjFn = cat === 'noun' ? Conj.noun : cat === 'iadj' ? Conj.iAdj : Conj.naAdj;
+      const wordObj = words.find(w => id.startsWith(w.id));
+      if (wordObj) return Conj.makeQuestion('form', wordObj, words, conjFn);
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+function renderWrongQuiz() {
+  const content = document.getElementById('content');
+  const { wrongQs, wrongIdx } = STATE;
+  const total = wrongQs.length;
+
+  if (!wrongQs.length) {
+    renderWrongTab();
+    return;
+  }
+
+  if (wrongIdx >= total) {
+    content.innerHTML = `
+      <p class="section-title">오답 퀴즈 완료!</p>
+      <div class="quiz-prompt" style="text-align:center;padding:32px 20px;margin-bottom:16px">
+        <div style="font-size:48px;margin-bottom:12px">✅</div>
+        <div style="font-size:22px;font-weight:700;color:var(--accent)">${total}문제 완료</div>
+        <div style="color:var(--text-dim);margin-top:6px">3번 연속 맞춘 단어는 자동 졸업!</div>
+      </div>
+      <button class="btn-primary" id="back-btn">오답노트로 돌아가기</button>
+    `;
+    content.querySelector('#back-btn').addEventListener('click', () => renderWrongTab());
+    return;
+  }
+
+  const q = wrongQs[wrongIdx];
+  const progress = Math.round((wrongIdx / total) * 100);
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <p class="section-title" style="margin:0">오답 퀴즈</p>
+      <span style="font-size:13px;color:var(--text-dim)">${wrongIdx + 1} / ${total}</span>
+    </div>
+    <div class="progress-wrap"><div class="progress-fill" style="width:${progress}%"></div></div>
+    <div class="quiz-area">
+      ${buildTodayPromptHTML(q)}
+      <div class="options-grid" id="options"></div>
+      <div class="feedback" id="feedback"></div>
+      <button class="btn-primary" id="next-btn" style="display:none">
+        ${wrongIdx + 1 >= total ? '결과 보기 →' : '다음 →'}
+      </button>
+    </div>
+  `;
+
+  STATE.wrongAnswered = false;
+  content.querySelectorAll && content.querySelector('#options') && (() => {
+    const optGrid = content.querySelector('#options');
+    q.options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'option-btn';
+      btn.textContent = opt;
+      btn.addEventListener('click', () => handleWrongAnswer(opt, q));
+      optGrid.appendChild(btn);
+    });
+  })();
+
+  content.querySelector('#next-btn').addEventListener('click', () => {
+    STATE.wrongIdx++;
+    renderWrongQuiz();
+  });
+}
+
+function handleWrongAnswer(chosen, q) {
+  if (STATE.wrongAnswered) return;
+  STATE.wrongAnswered = true;
+
+  const isCorrect = chosen === q.answer;
+  const cat = q.category || 'verb';
+  Store.recordAnswer(q.id, isCorrect, cat, { word: q.word, meaning: q.meaning, reading: q.reading });
+
+  document.querySelectorAll('.option-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.textContent === q.answer) btn.classList.add('correct');
+    else if (btn.textContent === chosen && !isCorrect) btn.classList.add('wrong');
+  });
+
+  const fb = document.getElementById('feedback');
+  fb.classList.add('show');
+  if (isCorrect) {
+    fb.classList.add('correct-fb');
+    fb.innerHTML = `<span>✓</span> 정답!`;
+  } else {
+    fb.classList.add('wrong-fb');
+    fb.innerHTML = `<span>✗</span> 오답. 정답: <span class="fb-answer">${q.answer}</span>`;
+  }
+  document.getElementById('next-btn').style.display = 'block';
 }
 
 // ─── Rules Tab ────────────────────────────────────────
